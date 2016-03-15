@@ -34,7 +34,12 @@ WEATHER_EP = 'http://api.openweathermap.org/data/2.5'
 
 # start coding below
 get "/ip" do
-  body ({ errors: [{ message: 'not yet implemented'}]}.to_json)
+  ip = params['ip'] || "130.125.1.11"
+  url = IP_EP + "/" + ip
+  uri = URI(url)
+  response = Net::HTTP.get_response(uri)
+  result = JSON.parse(response.body)
+  body result.to_json
 end
 
 
