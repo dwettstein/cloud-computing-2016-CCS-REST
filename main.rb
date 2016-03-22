@@ -49,6 +49,10 @@ def hasOneParam(_currParm, _definedParams)
   return (_currParm.keys.map(&:upcase) & _definedParams.map(&:upcase)).any?
 end
 
+def doError(_msg)
+  return ({ errors: [{ message: _msg}]}.to_json)
+end
+
 def doIPRequest(_params)
   parm = _params['ip'] || "130.125.1.11"
   url = IP_EP + "/" + parm
@@ -62,7 +66,7 @@ def doLocationRequest(_params)
     url = TRANSPORT_EP + "/locations?" + URI.encode_www_form(parm)
     return forwardRequest(url)
   else
-    return ({ errors: [{ message: 'Request does not contain one of the correct parameters ('+definedParams.join(",")+')'}]}.to_json)
+    return doError('Request does not contain one of the correct parameters ('+definedParams.join(",")+')')
   end
 end
 
@@ -73,7 +77,7 @@ def doStationboardRequest(_params)
     url = TRANSPORT_EP + "/stationboard?" + URI.encode_www_form(parm)
     return forwardRequest(url)
   else
-    return ({ errors: [{ message: 'Request does not contain the correct parameters ('+definedParams.join(",")+')'}]}.to_json)
+    return doError('Request does not contain one of the correct parameters ('+definedParams.join(",")+')')
   end
 end
 
@@ -83,12 +87,12 @@ def doWeatherRequest(_params, _future)
   definedParams = (cityParam + coordParam)
   parm = _params.length > 0 ? _params : {"q" => "Neuchatel"}
   if hasAllParams(parm, cityParam) and hasOneParam(parm, coordParam)
-    return ({ errors: [{ message: 'Request contains too many parameters ('+definedParams.join(",")+')'}]}.to_json)
+    return doError('Request contains too many parameters ('+definedParams.join(",")+')')
   elsif hasAllParams(parm, cityParam) or hasAllParams(parm, coordParam)
     url = WEATHER_EP + "/" + (_future ? "forecast" : "weather") + "?" + WEATHER_APPID + "&" + URI.encode_www_form(parm)
     return forwardRequest(url)
   else
-    return ({ errors: [{ message: 'Request does not contain one of the correct parameters ('+definedParams.join(",")+')'}]}.to_json)
+    return doError('Request does not contain one of the correct parameters ('+definedParams.join(",")+')')
   end
 end
 
@@ -99,22 +103,27 @@ def doStationsRequest(_params)
   location = JSON.parse(res)
   station = (location["stations"].sort_by { |hash| hash['distance'].to_i }).first
   if station.nil?
-    return ({ errors: [{ message: 'No station was found!'}]}.to_json)
+    return doError('No station was found!')
   else
-    return doStationboardRequest({"id"=>station["id"].to_s, "limit"=>"5"})
+    res = doStationboardRequest({"id"=>station["id"].to_s, "limit"=>"5"})
+    stationboard = JSON.parse(res)
+    # StationsRequest param limit=5 can respond more than 5 elements (if on same time)
+    # therefore the filter first(5) must be applied
+    return ({ stationboard: stationboard["stationboard"].first(5) }.to_json)
   end
 end
 
 def doWeathersRequest(_params, _future)
   res = doStationsRequest(_params)
   station = JSON.parse(res)
+  # check for error
   if station.key?("errors")
     return res
   else
-    stationboard = station["stationboard"].first(5)
+    stationboard = station["stationboard"]
     destination = Array.new
-    stationboard.each do |stop|
-      dest = stop["stop"]["station"]
+    stationboard.each do |board|
+      dest = (board["passList"].last)["station"]
       coord = dest["coordinate"]
       res = doWeatherRequest({"lat" => coord["x"].to_s, "lon" => coord["y"].to_s}, _future)
       weather = JSON.parse(res)
@@ -142,7 +151,7 @@ get '/connections' do
     url = TRANSPORT_EP + "/connections?" + URI.encode_www_form(parm)
     body forwardRequest(url)
   else
-    body ({ errors: [{ message: 'Request does not contain the correct parameters ('+definedParams.join(",")+')'}]}.to_json)
+    body doError('Request does not contain the correct parameters ('+definedParams.join(",")+')')
   end
 end
 
@@ -164,6 +173,7 @@ end
 
 get '/weathers' do
   destination = doWeathersRequest(params, false)
+  # check for error
   if not destination.kind_of?(Array)
     body destination
   else
@@ -192,6 +202,7 @@ get '/future_weathers' do
   # check if parameter x exists and if it is a whole number between 1 and 5
   if hasOneParam(params, definedParams) and params["x"].to_f % 1 == 0 and params["x"].to_i.between?(1,5)
     destination = doWeathersRequest(params, true)
+    # check for error
     if not destination.kind_of?(Array)
       body destination
     else
@@ -213,7 +224,7 @@ get '/future_weathers' do
       body ({ future_weathers: destination }.to_json)
     end
   else
-    body ({ errors: [{ message: 'Parameter x must be a number from 1 to 5.'}]}.to_json)
+    body doError('Parameter x must be a number from 1 to 5.')
   end
 end
 
