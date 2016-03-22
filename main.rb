@@ -201,26 +201,33 @@ get '/future_weathers' do
   definedParams = ["x"]
   # check if parameter x exists and if it is a whole number between 1 and 5
   if hasOneParam(params, definedParams) and params["x"].to_f % 1 == 0 and params["x"].to_i.between?(1,5)
+    x = params["x"].to_i
     destination = doWeathersRequest(params, true)
     # check for error
     if not destination.kind_of?(Array)
       body destination
     else
-      # TODO filter forecast data up to x days
-      
-      
-      # TODO sort by some !numbers!
-      sortby = "weather.main.temp"
-      sort = params.has_key?("sort") ? params["sort"].upcase : ""
-      if sort == "TEMPERATURE"
-        sortby = "weather.main.temp"
-      elsif sort == "HUMIDITY"
-        sortby = "weather.main.humidity"
-      elsif sort == "PRESSURE"
-        sortby = "weather.main.pressure"
+      # filter forecast data up to x days
+      destination.each do |dest|
+        dest["weather"]["list"].delete_if {|hash| !(DateTime.now-1..DateTime.now + x).cover?(DateTime.parse(hash["dt_txt"]).to_date)}
       end
       
-      #destination = (destination.sort_by! { |hash| getValue(hash, sortby).to_f }).reverse
+      #sorts the destination based on the weather on day x
+      sortby = "main.temp"
+      sort = params.has_key?("sort") ? params["sort"].upcase : ""
+      if sort == "TEMPERATURE"
+        sortby = "main.temp"
+      elsif sort == "HUMIDITY"
+        sortby = "main.humidity"
+      elsif sort == "PRESSURE"
+        sortby = "main.pressure"
+      elsif sort == "WIND"
+        sortby = "wind.speed"
+      elsif sort == "CLOUD"
+        sortby = "clouds.all"
+      end
+      
+      destination = (destination.sort_by! { |hash| getValue(hash["weather"]["list"].last, sortby).to_f }).reverse
       body ({ future_weathers: destination }.to_json)
     end
   else
