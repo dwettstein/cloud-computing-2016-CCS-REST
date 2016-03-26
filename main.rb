@@ -32,8 +32,11 @@ TRANSPORT_EP = 'http://transport.opendata.ch/v1'
 WEATHER_EP = 'http://api.openweathermap.org/data/2.5'
 WEATHER_APPID = 'appid=87ccf52f80bef59fef990beacbd2a5fb'
 
-
 # start coding below
+
+## 
+# Makes a HTTP GET request to the given URI.
+# The response body is returned as JSON.
 def forwardRequest(_url)
   uri = URI(_url)
   response = Net::HTTP.get_response(uri)
@@ -41,24 +44,35 @@ def forwardRequest(_url)
   return result.to_json
 end
 
+##
+# Checks if all needed parameters are given.
 def hasAllParams(_currParm, _definedParams)
   return (_currParm.keys.map(&:upcase) & _definedParams.map(&:upcase)).length == _definedParams.length
 end
 
+##
+# Checks if any needed parameter is given.
 def hasOneParam(_currParm, _definedParams)
   return (_currParm.keys.map(&:upcase) & _definedParams.map(&:upcase)).any?
 end
 
+##
+# Creates a response JSON when an error occurred.
 def doError(_msg)
   return ({ errors: [{ message: _msg}]}.to_json)
 end
 
+##
+# Makes a GET request to the IP-API.
 def doIPRequest(_params)
   parm = _params['ip'] || "130.125.1.11"
   url = IP_EP + "/" + parm
   return forwardRequest(url)
 end
 
+##
+# Makes a /locations GET request to the Transport Opendata API.
+# Either (query) or (x, y) are mandatory.
 def doLocationRequest(_params)
   definedParams = ["query","x","y"]
   parm = _params.length > 0 ? _params : {"query" => "Neuchatel"}
@@ -70,6 +84,23 @@ def doLocationRequest(_params)
   end
 end
 
+##
+# Makes a /connections GET request to the Transport Opendata API.
+# All parameters are mandatory.
+def doConnectionsRequest(_params)
+  definedParams = ["from","to"]
+  parm = _params.length > 0 ? _params : {"from" => "Neuchatel","to" => "Bern"}
+  if hasAllParams(parm, definedParams)
+    url = TRANSPORT_EP + "/connections?" + URI.encode_www_form(parm)
+    return forwardRequest(url)
+  else
+    return doError('Request does not contain the correct parameters ('+definedParams.join(",")+')')
+  end
+end
+
+##
+# Makes a /stationboard GET request to the Transport Opendata API.
+# Either (station) or (id) is mandatory.
 def doStationboardRequest(_params)
   definedParams = ["station","id"]
   parm = _params.length > 0 ? _params : {"station" => "Neuchatel"}
@@ -81,6 +112,10 @@ def doStationboardRequest(_params)
   end
 end
 
+##
+# Makes a /weather or a /forecast GET request to the OpenWeatherMap API.
+# Either (q) or (lat, lon) are mandatory.
+# By giving the parameter _future a /forecast request is executed.
 def doWeatherRequest(_params, _future)
   cityParam = ["q"]
   coordParam = ["lat","lon"]
@@ -96,6 +131,13 @@ def doWeatherRequest(_params, _future)
   end
 end
 
+##
+# Combines /ip, /locations and /stationboard GET requests to the Transport Opendata API.
+#
+# Takes an IP address as parameter and returns the next 5 (train) connections running from 
+# the nearest train station to this IP location.
+#
+# Parameter IP is mandatory.
 def doStationsRequest(_params)
   res = doIPRequest(params)
   ip = JSON.parse(res)
@@ -113,6 +155,13 @@ def doStationsRequest(_params)
   end
 end
 
+##
+# Combines /stations and /weather GET requests.
+#
+# Takes an IP address as parameter and returns a list of pairs <destination, weather> 
+# for the next 5 connections returned by the /stations route.
+#
+# Parameter IP is mandatory.
 def doWeathersRequest(_params, _future)
   res = doStationsRequest(_params)
   station = JSON.parse(res)
@@ -134,43 +183,46 @@ def doWeathersRequest(_params, _future)
   end
 end
 
+##
+# Defines GET route for /ip.
 get "/ip" do
   body doIPRequest(params)
 end
 
-
+##
+# Defines GET route for /locations.
 get '/locations' do
   body doLocationRequest(params)
 end
 
-
+##
+# Defines GET route for /connections.
 get '/connections' do
-  definedParams = ["from","to"]
-  parm = params.length > 0 ? params : {"from" => "Neuchatel","to" => "Bern"}
-  if hasAllParams(parm, definedParams)
-    url = TRANSPORT_EP + "/connections?" + URI.encode_www_form(parm)
-    body forwardRequest(url)
-  else
-    body doError('Request does not contain the correct parameters ('+definedParams.join(",")+')')
-  end
+  body doConnectionsRequest(params)
 end
 
-
+##
+# Defines GET route for /stationboard.
 get '/stationboard' do
   body doStationboardRequest(params)
 end
 
-
+##
+# Defines GET route for /weather.
 get '/weather' do
   body doWeatherRequest(params, false)
 end
 
-
+##
+# Defines GET route for /stations.
 get '/stations' do
   body doStationsRequest(params)
 end
 
-
+##
+# Defines GET route for /weathers.
+# If the (sort) parameter is given, sorts the results either by 
+# temperature, humidity, pressure, cloud or wind (default temperature).
 get '/weathers' do
   destination = doWeathersRequest(params, false)
   # check for error
@@ -196,7 +248,10 @@ get '/weathers' do
   end
 end
 
-
+##
+# Defines GET route for /future_weathers.
+# If the (sort) parameter is given, sorts the results either by 
+# temperature, humidity, pressure, cloud or wind (default temperature).
 get '/future_weathers' do
   definedParams = ["x"]
   # check if parameter x exists and if it is a whole number between 1 and 5
@@ -208,8 +263,6 @@ get '/future_weathers' do
     else
       # TODO filter forecast data up to x days
       
-      
-      # TODO sort by some !numbers!
       sortby = "weather.main.temp"
       sort = params.has_key?("sort") ? params["sort"].upcase : ""
       if sort == "TEMPERATURE"
