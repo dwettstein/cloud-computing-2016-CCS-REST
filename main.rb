@@ -147,11 +147,13 @@ def doStationsRequest(_params)
   if station.nil?
     return doError('No station was found!')
   else
-    res = doStationboardRequest({"id"=>station["id"].to_s, "limit"=>"5"})
+    departing_station_name = station["name"]
+    # Get the stationboard with the next 5 trains leaving from the given station.
+    res = doStationboardRequest({"id"=>station["id"].to_s, "limit"=>"5", "transportations[]"=>"ec_ic", "transportations[]"=>"ice_tgv_rj", "transportations[]"=>"ir", "transportations[]"=>"re_d"})
     stationboard = JSON.parse(res)
     # StationsRequest param limit=5 can respond more than 5 elements (if on same time)
     # therefore the filter first(5) must be applied
-    return ({ stationboard: stationboard["stationboard"].first(5) }.to_json)
+    return ({ departing_station_name: departing_station_name, stationboard: stationboard["stationboard"].first(5) }.to_json)
   end
 end
 
@@ -169,17 +171,19 @@ def doWeathersRequest(_params, _future)
   if station.key?("errors")
     return res
   else
+    departing_station_name = station["departing_station_name"]
     stationboard = station["stationboard"]
-    destination = Array.new
+    destinations = Array.new
     stationboard.each do |board|
       dest = (board["passList"].last)["station"]
       coord = dest["coordinate"]
+      departure = board["stop"]["departure"]
+      platform = board["stop"]["platform"]
       res = doWeatherRequest({"lat" => coord["x"].to_s, "lon" => coord["y"].to_s}, _future)
       weather = JSON.parse(res)
-      destination.push({"destination" => dest, "weather" => weather})
+      destinations.push({"departing_station_name" => departing_station_name, "destination" => dest, "weather" => weather, "departure" => departure, "platform" => platform})
     end
-    
-    return destination
+    return destinations
   end
 end
 
